@@ -1,13 +1,15 @@
-use anyhow::{anyhow, Result};
-use dotenvy::dotenv;
+use anyhow::{Result, anyhow};
 use std::env;
+use dotenvy::dotenv;
 use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub server: ServerConfig,
     pub cloudinary: CloudinaryConfig,
+    pub minio: MinioConfig,
     pub model: ModelConfig,
+    pub s3: S3Config,
 }
 
 #[derive(Debug, Clone)]
@@ -24,6 +26,25 @@ pub struct CloudinaryConfig {
     pub upload_preset: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct S3Config {
+    pub access_key: String,
+    pub secret_key: String,
+    pub bucket: String,
+    pub region: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct MinioConfig {
+    pub access_key: String,
+    pub secret_key: String,
+    pub bucket: String,
+    pub endpoint: String,
+    pub secure: bool,
+    pub region: String,
+}
+
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ModelSize {
     Small,
@@ -39,9 +60,7 @@ impl FromStr for ModelSize {
             "small" => Ok(ModelSize::Small),
             "medium" => Ok(ModelSize::Medium),
             "large" => Ok(ModelSize::Large),
-            _ => Err(anyhow!(
-                "Invalid model size. Valid values are: small, medium, large"
-            )),
+            _ => Err(anyhow!("Invalid model size. Valid values are: small, medium, large"))
         }
     }
 }
@@ -68,7 +87,7 @@ impl AppConfig {
         dotenv().ok();
 
         let model_size = ModelSize::from_str(
-            &env::var("ONNX_MODEL_SIZE").unwrap_or_else(|_| "medium".to_string()),
+            &env::var("ONNX_MODEL_SIZE").unwrap_or_else(|_| "medium".to_string())
         )?;
 
         let model_config = ModelConfig {
@@ -90,6 +109,22 @@ impl AppConfig {
                 upload_preset: env::var("CLOUDINARY_UPLOAD_PRESET")?,
             },
             model: model_config,
+            s3: S3Config {
+                access_key: env::var("AWS_ACCESS_KEY_ID")?,
+                secret_key: env::var("AWS_SECRET_ACCESS_KEY")?,
+                bucket: env::var("S3_BUCKET")?,
+                region: env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+            },
+            minio: MinioConfig {
+                access_key: env::var("MINIO_ACCESS_KEY")?,
+                secret_key: env::var("MINIO_SECRET_KEY")?,
+                bucket: env::var("MINIO_BUCKET")?,
+                endpoint: env::var("MINIO_ENDPOINT")?,
+                secure: env::var("MINIO_SECURE")
+                    .map(|v| v.parse::<bool>().unwrap_or(true))
+                    .unwrap_or(true),
+                region: env::var("MINIO_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+            },
         })
     }
 }
