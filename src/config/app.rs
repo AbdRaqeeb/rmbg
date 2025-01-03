@@ -1,6 +1,6 @@
-use anyhow::{Result, anyhow};
-use std::env;
+use anyhow::{anyhow, Result};
 use dotenvy::dotenv;
+use std::env;
 use std::str::FromStr;
 
 #[derive(Debug, Clone)]
@@ -44,7 +44,6 @@ pub struct MinioConfig {
     pub region: String,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ModelSize {
     Small,
@@ -60,7 +59,9 @@ impl FromStr for ModelSize {
             "small" => Ok(ModelSize::Small),
             "medium" => Ok(ModelSize::Medium),
             "large" => Ok(ModelSize::Large),
-            _ => Err(anyhow!("Invalid model size. Valid values are: small, medium, large"))
+            _ => Err(anyhow!(
+                "Invalid model size. Valid values are: small, medium, large"
+            )),
         }
     }
 }
@@ -87,7 +88,7 @@ impl AppConfig {
         dotenv().ok();
 
         let model_size = ModelSize::from_str(
-            &env::var("ONNX_MODEL_SIZE").unwrap_or_else(|_| "medium".to_string())
+            &env::var("ONNX_MODEL_SIZE").unwrap_or_else(|_| "medium".to_string()),
         )?;
 
         let model_config = ModelConfig {
@@ -110,16 +111,16 @@ impl AppConfig {
             },
             model: model_config,
             s3: S3Config {
-                access_key: env::var("AWS_ACCESS_KEY_ID")?,
-                secret_key: env::var("AWS_SECRET_ACCESS_KEY")?,
-                bucket: env::var("S3_BUCKET")?,
+                access_key: env::var("AWS_ACCESS_KEY_ID").unwrap_or("".to_string()),
+                secret_key: env::var("AWS_SECRET_ACCESS_KEY").unwrap_or("".to_string()),
+                bucket: env::var("S3_BUCKET").unwrap_or("".to_string()),
                 region: env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
             },
             minio: MinioConfig {
-                access_key: env::var("MINIO_ACCESS_KEY")?,
-                secret_key: env::var("MINIO_SECRET_KEY")?,
-                bucket: env::var("MINIO_BUCKET")?,
-                endpoint: env::var("MINIO_ENDPOINT")?,
+                access_key: env::var("MINIO_ACCESS_KEY").unwrap_or("".to_string()),
+                secret_key: env::var("MINIO_SECRET_KEY").unwrap_or("".to_string()),
+                bucket: env::var("MINIO_BUCKET").unwrap_or("".to_string()),
+                endpoint: env::var("MINIO_ENDPOINT").unwrap_or("".to_string()),
                 secure: env::var("MINIO_SECURE")
                     .map(|v| v.parse::<bool>().unwrap_or(true))
                     .unwrap_or(true),

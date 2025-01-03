@@ -1,16 +1,17 @@
-mod cloudinary;
-mod s3;
-mod minio;
-
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
 use serde::Deserialize;
 use std::sync::Arc;
-use crate::services::upload::cloudinary::CloudinaryUploader;
-use crate::services::upload::minio::MinioUploader;
-use crate::services::upload::s3::S3Uploader;
 
-#[derive(Debug, Clone, Deserialize)]
+pub(crate) mod cloudinary;
+pub(crate) mod minio;
+pub(crate) mod s3;
+
+pub use cloudinary::CloudinaryUploader;
+pub use minio::MinioUploader;
+pub use s3::S3Uploader;
+
+#[derive(Debug, Clone, Deserialize, Hash, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum UploaderType {
     Cloudinary,
@@ -37,26 +38,52 @@ pub type DynImageUploader = Arc<dyn ImageUploader>;
 pub struct UploaderFactory;
 
 impl UploaderFactory {
-    pub fn create_uploader(uploader_type: UploaderType, config: &crate::config::AppConfig) -> DynImageUploader {
-        match uploader_type {
-            UploaderType::Cloudinary => Arc::new(CloudinaryUploader::new(
-                &config.cloudinary.cloud_name,
-                &config.cloudinary.api_key,
-                &config.cloudinary.api_secret,
-            )),
-            UploaderType::S3 => Arc::new(S3Uploader::new(
-                &config.s3.access_key,
-                &config.s3.secret_key,
-                &config.s3.bucket,
-                &config.s3.region,
-            )),
-            UploaderType::Minio => Arc::new(MinioUploader::new(
-                &config.minio.access_key,
-                &config.minio.secret_key,
-                &config.minio.bucket,
-                &config.minio.endpoint,
-                config.minio.secure,
-            ).expect("Failed to create MinIO uploader")),
-        }
+    pub async fn create_uploader(
+        uploader_type: UploaderType,
+        config: &crate::config::AppConfig,
+    ) -> Result<DynImageUploader> {
+        let uploader: DynImageUploader = match uploader_type {
+            UploaderType::Cloudinary => {
+                if !&config.cloudinary.cloud_name.is_empty() {
+                    ()
+                };
+                Arc::new(CloudinaryUploader::new(
+                    &config.cloudinary.cloud_name,
+                    &config.cloudinary.api_key,
+                    &config.cloudinary.api_secret,
+                ))
+            }
+            UploaderType::S3 => {
+                if !&config.s3.access_key.is_empty() {
+                    ()
+                };
+                Arc::new(
+                    S3Uploader::new(
+                        &config.s3.access_key,
+                        &config.s3.secret_key,
+                        &config.s3.bucket,
+                        &config.s3.region,
+                    )
+                    .await?,
+                )
+            }
+            UploaderType::Minio => {
+                if !&config.minio.access_key.is_empty() {
+                    ()
+                };
+                Arc::new(
+                    MinioUploader::new(
+                        &config.minio.access_key,
+                        &config.minio.secret_key,
+                        &config.minio.bucket,
+                        &config.minio.endpoint,
+                        config.minio.secure,
+                    )
+                    .await?,
+                )
+            }
+        };
+
+        Ok(uploader)
     }
 }

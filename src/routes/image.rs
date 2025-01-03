@@ -1,8 +1,8 @@
-use crate::config::AppConfig;
 use crate::error::AppError;
+use crate::server::AppState;
 use crate::services::{
     image::{find_alpha_bounds, process_image},
-    upload::{UploaderType, UploaderFactory, ImageUploader},
+    upload::{ImageUploader, UploaderType},
 };
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
 use actix_web::{post, web, HttpResponse};
@@ -33,12 +33,13 @@ struct ProcessedImageResult {
 #[post("/process")]
 pub async fn process_and_upload(
     MultipartForm(form): MultipartForm<UploadForm>,
-    session: web::Data<Arc<ort::Session>>,
-    config: web::Data<AppConfig>,
+    app_state: web::Data<AppState>,
     query: web::Query<ProcessQuery>,
 ) -> Result<HttpResponse, AppError> {
-    // Create uploader based on query parameter
-    let uploader = UploaderFactory::create_uploader(query.upload.clone(), &config);
+    let uploader = app_state
+        .uploaders
+        .get(&query.upload)
+        .ok_or_else(|| AppError::InternalError("Uploader not found".into()))?;
 
     log::info!("Using uploader: {:?}", query.upload);
     log::info!("Received form data with {} files", form.files.len());
@@ -49,23 +50,25 @@ pub async fn process_and_upload(
     }
 
     // Process all files concurrently
-    let processing_futures: Vec<_> = form.files
+    let processing_futures: Vec<_> = form
+        .files
         .into_iter()
         .map(|file| {
-            let pr_session = Arc::clone(&session);
-            let pr_uploader = Arc::clone(&uploader);
-            let pr_config = config.clone();
+            let pr_session = Arc::clone(&app_state.session);
+            let pr_uploader = Arc::clone(uploader);
             let should_crop = query.crop.unwrap_or(false);
+            let folder = match query.upload {
+                UploaderType::Cloudinary => &app_state.config.cloudinary.upload_preset,
+                _ => "",
+            };
 
             async move {
                 log::info!("Processing file: {:?}", file.file_name);
 
-                let image_data = tokio::fs::read(file.file.path())
-                    .await
-                    .map_err(|e| {
-                        log::error!("Error reading uploaded file: {}", e);
-                        AppError::InternalError(e.to_string())
-                    })?;
+                let image_data = tokio::fs::read(file.file.path()).await.map_err(|e| {
+                    log::error!("Error reading uploaded file: {}", e);
+                    AppError::InternalError(e.to_string())
+                })?;
 
                 if image_data.is_empty() {
                     log::warn!("Empty file received");
@@ -74,13 +77,8 @@ pub async fn process_and_upload(
 
                 log::info!("File size: {} bytes", image_data.len());
 
-                process_single_image(
-                    image_data,
-                    &pr_session,
-                    &*pr_uploader,
-                    &pr_config,
-                    should_crop
-                ).await
+                process_single_image(image_data, &pr_session, &*pr_uploader, should_crop, &folder)
+                    .await
             }
         })
         .collect();
@@ -88,7 +86,10 @@ pub async fn process_and_upload(
     // Wait for all processing to complete
     let results = try_join_all(processing_futures).await?;
 
-    log::info!("Successfully processed and uploaded {} images", results.len());
+    log::info!(
+        "Successfully processed and uploaded {} images",
+        results.len()
+    );
 
     Ok(HttpResponse::Ok().json(json!({
         "results": results
@@ -99,20 +100,19 @@ async fn process_single_image(
     image_data: Vec<u8>,
     session: &Arc<ort::Session>,
     uploader: &dyn ImageUploader,
-    config: &AppConfig,
     should_crop: bool,
+    folder: &str,
 ) -> Result<ProcessedImageResult, AppError> {
     // Process image with ONNX model
     log::info!("Processing image with ONNX model");
-    let processed = process_image(session, &image_data).await
-        .map_err(|e| {
-            log::error!("Image processing failed: {}", e);
-            AppError::ImageProcessing(e.to_string())
-        })?;
+    let processed = process_image(session, &image_data).await.map_err(|e| {
+        log::error!("Image processing failed: {}", e);
+        AppError::ImageProcessing(e.to_string())
+    })?;
 
     // If no cropping requested, upload the processed image directly
     if !should_crop {
-        let secure_url = upload_to_storage(uploader, &processed.data).await?;
+        let secure_url = upload_to_storage(uploader, &processed.data, &folder).await?;
         return Ok(ProcessedImageResult { secure_url });
     }
 
@@ -132,8 +132,9 @@ async fn process_single_image(
                 min_x,
                 min_y,
                 max_x - min_x + 1,
-                max_y - min_y + 1
-            ).to_image();
+                max_y - min_y + 1,
+            )
+            .to_image();
 
             // Convert cropped image to PNG format
             let mut buffer = std::io::Cursor::new(Vec::new());
@@ -142,12 +143,12 @@ async fn process_single_image(
                 .map_err(|e| AppError::ImageProcessing(e.to_string()))?;
 
             // Upload the final cropped image
-            let secure_url = upload_to_storage(uploader, &buffer.into_inner()).await?;
+            let secure_url = upload_to_storage(uploader, &buffer.into_inner(), &folder).await?;
             Ok(ProcessedImageResult { secure_url })
-        },
+        }
         None => {
             // If no valid bounds found, upload the processed image without cropping
-            let secure_url = upload_to_storage(uploader, &processed.data).await?;
+            let secure_url = upload_to_storage(uploader, &processed.data, &folder).await?;
             Ok(ProcessedImageResult { secure_url })
         }
     }
@@ -156,10 +157,12 @@ async fn process_single_image(
 async fn upload_to_storage(
     uploader: &dyn ImageUploader,
     image_data: &[u8],
+    folder: &str,
 ) -> Result<String, AppError> {
     log::info!("Uploading to storage service");
+
     uploader
-        .upload(image_data, "png", "uploads")
+        .upload(image_data, "png", folder)
         .await
         .map_err(|e| {
             log::error!("Upload failed: {}", e);

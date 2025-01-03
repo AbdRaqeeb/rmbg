@@ -1,9 +1,8 @@
-use anyhow::Error;
+// services/upload/s3.rs
 use super::ImageUploader;
 use async_trait::async_trait;
-use aws_sdk_s3::{Client};
-use aws_config::meta::region::RegionProviderChain;
-use aws_config::{BehaviorVersion, Region};
+use aws_config::Region;
+use aws_sdk_s3::{config::Credentials, Client};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -13,31 +12,37 @@ pub struct S3Uploader {
 }
 
 impl S3Uploader {
-    pub fn new(access_key: &str, secret_key: &str, bucket: &str, region: &str) -> Self {
-        let region_provider = RegionProviderChain::first_try(Region::new(region.to_owned()));
+    pub async fn new(
+        access_key: &str,
+        secret_key: &str,
+        bucket: &str,
+        region: &str,
+    ) -> anyhow::Result<Self> {
+        let credentials = Credentials::new(access_key, secret_key, None, None, "static");
 
-        let config = aws_config::defaults(BehaviorVersion::v2024_03_28())
-            .behavior_version(BehaviorVersion::latest())
-            .region(region_provider)
-            .credentials_provider(
-                aws_config::default_provider::credentials::DefaultCredentialsChain::builder()
-                    .build()
-            )
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(Region::new(region.to_owned()))
+            .credentials_provider(credentials)
             .load()
-            .expect("Failed to load AWS config");
+            .await;
 
         let client = Client::new(&config);
 
-        Self {
+        Ok(Self {
             client,
             bucket: bucket.to_owned(),
-        }
+        })
     }
 }
 
 #[async_trait]
 impl ImageUploader for S3Uploader {
-    async fn upload(&self, image_data: &[u8], format: &str, folder: &str) -> Result<String, Error> {
+    async fn upload(
+        &self,
+        image_data: &[u8],
+        format: &str,
+        folder: &str,
+    ) -> anyhow::Result<String> {
         let key = format!("{}/{}.{}", folder, Uuid::new_v4(), format);
 
         self.client
@@ -53,7 +58,7 @@ impl ImageUploader for S3Uploader {
         Ok(format!("https://{}.s3.amazonaws.com/{}", self.bucket, key))
     }
 
-    async fn delete(&self, file_id: &str) -> Result<bool, Error> {
+    async fn delete(&self, file_id: &str) -> anyhow::Result<bool> {
         self.client
             .delete_object()
             .bucket(&self.bucket)

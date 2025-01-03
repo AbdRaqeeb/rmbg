@@ -1,11 +1,11 @@
 use super::ImageUploader;
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
+use bytes::Bytes;
 use minio_rsc::client::BucketArgs;
 use minio_rsc::provider::StaticProvider;
 use minio_rsc::Minio;
 use std::sync::Arc;
-use bytes::Bytes;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -16,7 +16,7 @@ pub struct MinioUploader {
 }
 
 impl MinioUploader {
-    pub fn new(
+    pub async fn new(
         access_key: &str,
         secret_key: &str,
         bucket: &str,
@@ -33,18 +33,12 @@ impl MinioUploader {
             .secure(secure)
             .build()?;
 
-        // Ensure bucket exists
-        let bucket_exists = tokio::runtime::Runtime::new()?
-            .block_on(async {
-                let (buckets, _) = client.list_buckets().await?;
-                Ok::<_, anyhow::Error>(buckets.iter().any(|b| b.name == bucket))
-            })?;
+        // Check if bucket exists
+        let (buckets, _) = client.list_buckets().await?;
+        let bucket_exists = buckets.iter().any(|b| b.name == bucket);
 
         if !bucket_exists {
-            tokio::runtime::Runtime::new()?
-                .block_on(async {
-                    client.make_bucket(BucketArgs::new(bucket), false).await
-                })?;
+            client.make_bucket(BucketArgs::new(bucket), false).await?;
         }
 
         Ok(Self {
@@ -69,7 +63,7 @@ impl ImageUploader for MinioUploader {
         let key = format!("{}/{}.{}", folder, Uuid::new_v4(), format);
 
         self.client
-            .put_object(&self.bucket, &key, Bytes::from(image_data.to_vec()))
+            .put_object(&self.bucket, &key, Bytes::copy_from_slice(image_data))
             .await
             .map_err(|e| anyhow::anyhow!("MinIO upload failed: {}", e))?;
 
