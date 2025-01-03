@@ -1,9 +1,11 @@
-use anyhow::Result;
+use super::ImageUploader;
+use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use cloudinary::upload::{result::UploadResult, OptionalParameters, Source, Upload};
+use cloudinary::upload::{OptionalParameters, Source, Upload, result::UploadResult};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use uuid::Uuid;
+use anyhow::Error;
 
 #[derive(Clone)]
 pub struct CloudinaryUploader {
@@ -17,14 +19,15 @@ impl CloudinaryUploader {
                 api_key.to_string(),
                 cloud_name.to_string(),
                 api_secret.to_string(),
-            )),
+            ))
         }
     }
+}
 
-    pub async fn upload(&self, image_data: &[u8], format: &str, folder: &str) -> Result<String> {
+#[async_trait]
+impl ImageUploader for CloudinaryUploader {
+    async fn upload(&self, image_data: &[u8], format: &str, folder: &str) -> Result<String, Error> {
         let unique_filename = format!("{}", Uuid::new_v4());
-
-        // Convert image data to base64 data URL
         let base64_data = BASE64.encode(image_data);
         let data_url = format!("data:image/{};base64,{}", format, base64_data);
 
@@ -49,7 +52,7 @@ impl CloudinaryUploader {
         }
     }
 
-    pub async fn delete(&self, public_id: &str) -> Result<bool> {
+    async fn delete(&self, public_id: &str) -> Result<bool, Error> {
         let response = self
             .cloudinary
             .destroy(public_id)

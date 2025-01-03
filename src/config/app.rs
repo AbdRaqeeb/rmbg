@@ -7,7 +7,9 @@ use std::str::FromStr;
 pub struct AppConfig {
     pub server: ServerConfig,
     pub cloudinary: CloudinaryConfig,
+    pub minio: MinioConfig,
     pub model: ModelConfig,
+    pub s3: S3Config,
 }
 
 #[derive(Debug, Clone)]
@@ -22,6 +24,24 @@ pub struct CloudinaryConfig {
     pub api_key: String,
     pub api_secret: String,
     pub upload_preset: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct S3Config {
+    pub access_key: String,
+    pub secret_key: String,
+    pub bucket: String,
+    pub region: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct MinioConfig {
+    pub access_key: String,
+    pub secret_key: String,
+    pub bucket: String,
+    pub endpoint: String,
+    pub secure: bool,
+    pub region: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -90,6 +110,22 @@ impl AppConfig {
                 upload_preset: env::var("CLOUDINARY_UPLOAD_PRESET")?,
             },
             model: model_config,
+            s3: S3Config {
+                access_key: env::var("AWS_ACCESS_KEY_ID").unwrap_or("".to_string()),
+                secret_key: env::var("AWS_SECRET_ACCESS_KEY").unwrap_or("".to_string()),
+                bucket: env::var("S3_BUCKET").unwrap_or("".to_string()),
+                region: env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+            },
+            minio: MinioConfig {
+                access_key: env::var("MINIO_ACCESS_KEY").unwrap_or("".to_string()),
+                secret_key: env::var("MINIO_SECRET_KEY").unwrap_or("".to_string()),
+                bucket: env::var("MINIO_BUCKET").unwrap_or("".to_string()),
+                endpoint: env::var("MINIO_ENDPOINT").unwrap_or("".to_string()),
+                secure: env::var("MINIO_SECURE")
+                    .map(|v| v.parse::<bool>().unwrap_or(true))
+                    .unwrap_or(true),
+                region: env::var("MINIO_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+            },
         })
     }
 }

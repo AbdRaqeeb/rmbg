@@ -1,4 +1,4 @@
-# Rmbg
+# Background Removal API
 
 A Rust-based web service for removing backgrounds from images using ONNX models, built with Actix-web. This project is a rewrite of the logic from [rust-background-removal](https://github.com/dnanhkhoa/rust-background-removal) adapted to work as a web service with Actix.
 
@@ -6,9 +6,12 @@ A Rust-based web service for removing backgrounds from images using ONNX models,
 
 - Background removal using ONNX models
 - Support for multiple model sizes (small, medium, large)
+- Multiple storage provider support:
+    - Cloudinary (default)
+    - AWS S3
+    - MinIO
 - CUDA acceleration support
 - Auto-cropping option
-- Cloudinary integration for image storage
 - Concurrent processing of multiple images
 - Health check endpoint
 
@@ -34,6 +37,7 @@ chmod +x download_models.sh
 
 3. Create a `.env` file in the project root with the following variables:
 ```env
+# Server Configuration
 SERVER_HOST=127.0.0.1
 SERVER_PORT=8080
 LOG_LEVEL=info
@@ -45,9 +49,22 @@ CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
 CLOUDINARY_UPLOAD_PRESET=your_upload_preset
 
+# AWS S3 Configuration
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_REGION=us-east-1
+S3_BUCKET=your-bucket-name
+
+# MinIO Configuration
+MINIO_ACCESS_KEY=your_minio_access_key
+MINIO_SECRET_KEY=your_minio_secret_key
+MINIO_BUCKET=your-minio-bucket
+MINIO_ENDPOINT=localhost:9000
+MINIO_SECURE=false  # Use true for HTTPS
+
 # Model configuration
-# Options: small, medium, large
-MODEL_SIZE=medium  
+MODEL_SIZE=medium  # Options: small, medium, large
+MODEL_PATH=models/medium.onnx
 ```
 
 4. Install dependencies and build the project:
@@ -74,21 +91,52 @@ Response: "healthy"
 
 ### Process Images
 ```
-POST /api/process?crop=true
+POST /api/process
 Content-Type: multipart/form-data
+
+Query Parameters:
+- upload: Storage provider to use (cloudinary, s3, minio)
+- crop: Boolean flag for auto-cropping (optional)
 
 Parameters:
 - files: Array of image files
-- crop: (Optional) Boolean query parameter to enable auto-cropping
 
 Response:
 {
     "results": [
         {
-            "secure_url": "https://cloudinary.com/..."
+            "secure_url": "https://storage-provider.com/path/to/image.png"
         }
     ]
 }
+```
+
+## Usage Examples
+
+### Using Different Storage Providers
+
+1. Cloudinary (default):
+```bash
+curl -X POST "http://localhost:8080/api/process" \
+  -F "files=@image.jpg"
+```
+
+2. AWS S3:
+```bash
+curl -X POST "http://localhost:8080/api/process?upload=s3" \
+  -F "files=@image.jpg"
+```
+
+3. MinIO:
+```bash
+curl -X POST "http://localhost:8080/api/process?upload=minio" \
+  -F "files=@image.jpg"
+```
+
+4. With Auto-cropping:
+```bash
+curl -X POST "http://localhost:8080/api/process?crop=true" \
+  -F "files=@image.jpg"
 ```
 
 ## Performance Optimization
@@ -105,7 +153,7 @@ The execution providers are attempted in order, using the first available one.
 The service provides detailed error responses for various scenarios:
 - Invalid file format
 - Image processing failures
-- Cloudinary upload issues
+- Storage provider upload issues
 - Internal server errors
 
 ## Credits
