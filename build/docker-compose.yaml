@@ -1,0 +1,61 @@
+services:
+  rmbg:
+    build:
+      context: ..
+      dockerfile: ../Dockerfile
+    ports:
+      - '8080:8080'
+    environment:
+      - 'SERVER_HOST=0.0.0.0'
+      - 'SERVER_PORT=8080'
+      - 'LOG_LEVEL=info'
+      # possible values - small, medium, large
+      - 'ONNX_MODEL_SIZE=medium'
+
+      # cloudinary
+      - 'CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}'
+      - 'CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}'
+      - 'CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}'
+      - 'CLOUDINARY_UPLOAD_PRESET=${CLOUDINARY_UPLOAD_PRESET}'
+
+      # minio
+      - 'MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}'
+      - 'MINIO_SECRET_KEY=${MINIO_SECRET_KEY}'
+      - 'MINIO_BUCKET=${MINIO_BUCKET}'
+      # e.g localhost:7643, s3.example.com
+      - 'MINIO_ENDPOINT=${MINIO_ENDPOINT}'
+      - 'MINIO_REGION=${MINIO_REGION}'
+
+      # s3
+      - 'AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}'
+      - 'AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}'
+      - 'AWS_REGION=${AWS_REGION}'
+      - 'S3_BUCKET=${S3_BUCKET}'
+    volumes:
+      - models:/app/models:ro
+      - upload_tmp:/app/tmp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+volumes:
+  models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/models
+  upload_tmp:
+    driver: local
