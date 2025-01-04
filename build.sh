@@ -16,8 +16,8 @@ done
 echo "Building images with tag: $TAG"
 
 # Create and use a new builder instance with multi-architecture support
-docker buildx create --name multiarch-builder --driver docker-container --bootstrap || true
-docker buildx use multiarch-builder
+docker buildx create --name mybuilder --use
+docker buildx inspect --bootstrap
 
 # Build and push multi-architecture image
 docker buildx build \
@@ -28,4 +28,4 @@ docker buildx build \
   .
 
 # Clean up
-docker buildx rm multiarch-builder
+docker buildx rm mybuilder

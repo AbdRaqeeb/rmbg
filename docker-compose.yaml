@@ -29,9 +29,11 @@ services:
     restart: "no"
 
   rmbg:
-    image: ghcr.io/abdraqeeb/rmbg:latest
-    ports:
-      - '8080:8080'
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - '8080'
     volumes:
       - models:/app/models:ro
       - tmp:/app/tmp

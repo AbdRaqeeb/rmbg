@@ -1,61 +1,68 @@
 services:
+  model-downloader:
+    image: curlimages/curl:latest
+    user: root
+    volumes:
+      - models:/models
+    command: >
+      sh -c '
+        echo "Creating models directory..."
+        mkdir -p /models
+        chmod 777 /models
+      
+        echo "Checking for model file..."
+        if [ ! -f "/models/${MODEL_SIZE:-medium}.onnx" ]; then
+          echo "Downloading ${MODEL_SIZE:-medium} model..."
+          curl -L --fail \
+            https://github.com/imgly/background-removal-js/raw/4306d99530d3ae9ec11a892a23802be28f367518/bundle/models/${MODEL_SIZE:-medium} \
+            -o /models/${MODEL_SIZE:-medium}.onnx || exit 1
+          chmod 666 /models/${MODEL_SIZE:-medium}.onnx
+        else
+          echo "Model already exists, continuing..."
+        fi
+      
+        echo "Model-downloader completed successfully"
+        exit 0
+      '
+    environment:
+      - MODEL_SIZE=${MODEL_SIZE:-medium}
+    restart: "no"
+
   rmbg:
-    build:
-      context: ..
-      dockerfile: ../Dockerfile
+    image: ghcr.io/abdraqeeb/rmbg:latest
     ports:
       - '8080:8080'
+    volumes:
+      - models:/app/models:ro
+      - tmp:/app/tmp
     environment:
       - 'SERVER_HOST=0.0.0.0'
       - 'SERVER_PORT=8080'
-      - 'LOG_LEVEL=info'
-      # possible values - small, medium, large
-      - 'ONNX_MODEL_SIZE=medium'
-
-      # cloudinary
+      - 'LOG_LEVEL=debug'
+      - 'MODEL_PATH=/app/models/${MODEL_SIZE:-medium}.onnx'
+      - 'MODEL_SIZE=${MODEL_SIZE:-medium}'
       - 'CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}'
       - 'CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}'
       - 'CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}'
       - 'CLOUDINARY_UPLOAD_PRESET=${CLOUDINARY_UPLOAD_PRESET}'
-
-      # minio
       - 'MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}'
       - 'MINIO_SECRET_KEY=${MINIO_SECRET_KEY}'
       - 'MINIO_BUCKET=${MINIO_BUCKET}'
-      # e.g localhost:7643, s3.example.com
       - 'MINIO_ENDPOINT=${MINIO_ENDPOINT}'
       - 'MINIO_REGION=${MINIO_REGION}'
-
-      # s3
       - 'AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}'
       - 'AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}'
       - 'AWS_REGION=${AWS_REGION}'
       - 'S3_BUCKET=${S3_BUCKET}'
-    volumes:
-      - models:/app/models:ro
-      - upload_tmp:/app/tmp
+      - 'SERVER_PORT=${SERVER_PORT}'
+      - 'SERVER_HOST=${SERVER_HOST:-0.0.0.0}'
+      - 'LOG_LEVEL=${LOG_LEVEL:-info}'
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
+    depends_on:
+      - model-downloader
 
 volumes:
   models:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${PWD}/models
-  upload_tmp:
+  tmp:
     driver: local
