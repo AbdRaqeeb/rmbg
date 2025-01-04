@@ -26,6 +26,7 @@ impl Default for UploaderType {
     }
 }
 
+#[allow(dead_code)]
 #[async_trait]
 pub trait ImageUploader: Send + Sync + 'static {
     async fn upload(&self, image_data: &[u8], format: &str, folder: &str) -> Result<String>;
@@ -77,6 +78,7 @@ impl UploaderFactory {
                         &config.minio.secret_key,
                         &config.minio.bucket,
                         &config.minio.endpoint,
+                        &config.minio.region,
                         config.minio.secure,
                     )
                     .await?,

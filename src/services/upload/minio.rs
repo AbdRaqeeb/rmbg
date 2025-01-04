@@ -21,6 +21,7 @@ impl MinioUploader {
         secret_key: &str,
         bucket: &str,
         endpoint: &str,
+        region: &str,
         secure: bool,
     ) -> Result<Self> {
         // Create MinIO provider with credentials
@@ -29,6 +30,7 @@ impl MinioUploader {
         // Build MinIO client
         let client = Minio::builder()
             .endpoint(endpoint)
+            .region(region)
             .provider(provider)
             .secure(secure)
             .build()?;
